@@ -127,3 +127,15 @@ PASS  neutral untouched
 - 仓库：`https://github.com/corrinehu/dsh-workbuddy-connect`
 - 版本：`0.7.9`（本 fork 基线）
 - License：MIT（Copyright (c) 2026 Corrine Hu），本 fork 沿用同一许可
+
+---
+
+## Second pass: `identity-everywhere-fix.patch` (2026-10-21 17:40)
+
+The prefix patch above only rewrites the identity line when it **starts** the
+system content. In practice the harness renders a greeting ahead of it (an
+afternoon greeting, a user opening sentence), so the line lands mid-prompt and
+the whole turn still returns `400 / 11128`. See
+`PATCH-NOTES-identity-everywhere.md` for the measurements; the fix adds a
+second, position-independent pass. Both patches are applied to the shipped
+`lib/host-heartbeat-SJaZ33tR.js` here.
