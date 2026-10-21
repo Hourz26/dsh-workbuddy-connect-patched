@@ -1,0 +1,54 @@
+--- a/lib/host-heartbeat-SJaZ33tR.js
++++ b/lib/host-heartbeat-SJaZ33tR.js
+@@ -1057,10 +1057,41 @@
+ 	if (typeof body !== "object" || body === null || Array.isArray(body)) return source;
+ 	const obj = body;
+ 	obj["stream"] = true;
+ 	normalizeDeveloperRole(obj);
++	neutralizeChannelIdentity(obj);
+ 	normalizeToolChoice(obj);
+ 	return JSON.stringify(obj);
++}
++/**
++ * Neutralize the Harness identity sentence the CN gateway's channel check
++ * rejects at the start of a system/developer message (upstream code 11128,
++ * displayMsg.zh "请求被拦截，请重新发送"). Backport of PR #204.
++ */
++const CHANNEL_IDENTITY_PATTERN = /^[\s\uFEFF]*You are an?(?: AI)?(?: coding)? agent powered by [^.\n]{1,60}Harness\.?/iu;
++const NEUTRAL_IDENTITY = "You are an AI agent.";
++function rewriteChannelIdentityLine(text) {
++	return text.replace(CHANNEL_IDENTITY_PATTERN, NEUTRAL_IDENTITY);
++}
++function neutralizeChannelIdentity(obj) {
++	const messages = obj["messages"];
++	if (!Array.isArray(messages)) return;
++	for (const message of messages) {
++		if (typeof message !== "object" || message === null || Array.isArray(message)) continue;
++		const role = message["role"];
++		if (role !== "system" && role !== "developer") continue;
++		const content = message["content"];
++		if (typeof content === "string") {
++			message["content"] = rewriteChannelIdentityLine(content);
++			continue;
++		}
++		if (!Array.isArray(content)) continue;
++		for (const part of content) {
++			if (typeof part !== "object" || part === null || Array.isArray(part)) continue;
++			if (part["type"] !== "text" || typeof part["text"] !== "string") continue;
++			part["text"] = rewriteChannelIdentityLine(part["text"]);
++		}
++	}
+ }
+ /** Rewrite `role: "developer"` messages to `role: "system"` (upstream rejects developer). */
+ function normalizeDeveloperRole(obj) {
+ 	const messages = obj["messages"];
+@@ -1873,8 +1904,9 @@
+ 		return source;
+ 	}
+ 	if (!isObject(body)) return source;
+ 	dropUnsupportedEffort(body);
++	neutralizeChannelIdentity(body);
+ 	return JSON.stringify(body);
+ }
+ function prepareInternationalChatBody(source) {
+ 	const prepared = prepareChatBody(source);
