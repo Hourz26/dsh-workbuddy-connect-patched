@@ -1,10 +1,13 @@
 # DSH WorkBuddy Connect（fork：含渠道身份改写补丁）
 
-> **这是一个 fork。** 基线是上游 `v0.7.9`（上游已 deprecated、停止维护），额外包含一份本地补丁，
-> 用于绕开 2026-10-20 起腾讯网关新增的系统提示词渠道校验。补丁细节、实测边界、失效风险都写在
-> [`PATCH-NOTES.md`](./PATCH-NOTES.md)，diff 见 [`channel-identity-fix.patch`](./channel-identity-fix.patch)。
+> **这是一个 fork。** 基线是上游 `v0.7.9`（上游仓库已 404，停止维护），额外包含三套本地补丁，
+> 用于绕开 2026-10 中旬起腾讯网关新增的渠道校验。补丁细节、实测边界、失效风险都写在
+> [`PATCH-NOTES.md`](./PATCH-NOTES.md)、[`PATCH-NOTES-identity-everywhere.md`](./PATCH-NOTES-identity-everywhere.md)、
+> [`PATCH-NOTES-client-fingerprint.md`](./PATCH-NOTES-client-fingerprint.md)、[`PATCH-NOTES-compatibility.md`](./PATCH-NOTES-compatibility.md)，
+> diff 见 [`channel-identity-fix.patch`](./channel-identity-fix.patch)、[`identity-everywhere-fix.patch`](./identity-everywhere-fix.patch)、
+> [`client-fingerprint-fix.patch`](./client-fingerprint-fix.patch)。
 >
-> 上游：https://github.com/corrinehu/dsh-workbuddy-connect ｜ License: MIT
+> 本仓库：https://github.com/Hourz26/dsh-workbuddy-connect-patched ｜ 上游（已 404）：https://github.com/corrinehu/dsh-workbuddy-connect ｜ License: MIT
 >
 > **注意**：这是猫鼠游戏，不保证长期可用；重新安装 / 升级插件会覆盖 `lib/`，补丁随之失效。
 
@@ -19,47 +22,97 @@
 
 **前置**：本机已安装并登录 WorkBuddy（国内版）或 WorkBuddy AI 桌面 App。插件直接复用 App 的登录状态，账号切换自动跟随，两版互不影响。
 
-**推荐：把安装交给本机已有的 Agent**——任何具备终端与文件操作能力的助手（DSH Agent、Codex、Claude Code、Cursor 等）都可以，把下面这段话原样发给它：
+> ⚠️ **不要装 `dsh-workbuddy-connect@0.7.9`**。那是 npm 上的原版，2026-10-19 发布后再没更新，
+> 不带本仓库的三套补丁，会被腾讯网关拒掉（`400 / 11128` 或 `500 / 11134`）。
+> **必须从本仓库装。**
 
-```text
-请帮我安装并验证 DSH（DeepSeek Harness）插件 dsh-workbuddy-connect（项目地址：https://github.com/corrinehu/dsh-workbuddy-connect）：
-先阅读项目 README，确认我实际使用的界面（Web / Desktop / TUI）与 DSH 内核版本，桌面版以 App 内置核心为准，不要用独立 CLI 的版本代替；
-再按版本对应关系从 npm 正式包安装（0.2.1-rc.2→0.7.9、0.2.1-rc.1→0.7.7、0.2.0-rc.2→0.7.6、rc.1→0.7.0、0.1.5–0.1.7→0.6.5），优先走本机受支持的非插件市场渠道；部分 Desktop 发行版（尤其官方 Electron 版）的 profile 由 App 管理，各发行版规则未必相同，先确认我所用的发行版，再探查其合规的安装方式，但不得绕过其校验；
-任何本地文件或配置改动，先征得我同意并做好备份；
-装完后验证模型选择器里出现 WorkBuddy 分组，并陪我完成一次简短对话；
-若 Desktop 安装仍因 generation 校验失败（如 @types/retry 误报），请如实报告、参照上游 dataelement/dsh-desktop#688，并建议我改用独立的 Web / TUI，不要修改依赖包或绕过校验。
-```
-
-内核与插件版本速查（完整对应表见文末「版本兼容与历史版本」）：
-
-| DSH 内核 | 推荐插件版 |
-|---|---|
-| 0.2.1-rc.2 | 0.7.9（npm latest） |
-| 0.2.1-rc.1 | 0.7.7 |
-| 0.2.0-rc.2 | 0.7.6 |
-| 0.2.0-rc.1 | 0.7.0 |
-| 0.1.5 – 0.1.7 | 0.6.5 |
-
-<details>
-<summary>手动安装（命令行，仅 Web / TUI）</summary>
+### 最短路径
 
 ```sh
-# Web（按实际内核固定版本，示例为 0.2.1-rc.2 → 0.7.9；也可用 github:corrinehu/dsh-workbuddy-connect 从源码安装）
-dsh plugin --profile web add dsh-workbuddy-connect@0.7.9
-dsh web
+# 0. 确认内核版本落在 >=0.2.1-rc.2 且 <0.3.0
+dsh --version
 
-# TUI（示例为 0.1.x 内核；该 profile 需用 pnpm 11 安装，如 npx pnpm@11）
-dsh plugin --profile dsh-tui add dsh-workbuddy-connect@0.6.5
-dsh --profile dsh-tui
+# 1. 装（Web 用 --profile web，TUI 换 --profile dsh-tui）
+dsh plugin --profile web add github:Hourz26/dsh-workbuddy-connect-patched
+
+# 2. 彻底退出 DSH 再重开（不是刷新页面）
 ```
 
-</details>
+装完模型选择器里应出现 **WorkBuddy** 分组。
 
-> **TUI 版本搭配**：终端壳 `@deepseek-harness-tui/dsh-tui` 需 0.10.0-beta.5 及以上，更早版本装本插件会启动失败（`events is not iterable`）；推理档位的手动检测仅 Web / Desktop 提供，TUI 没有。
+### 手机上用（DSH Go）
 
-> **Desktop**：部分 Desktop 发行版（尤其官方 Electron 版）的 `desktop` profile 由 App 管理，官方版会直接拒绝独立 CLI 的 `--profile desktop`；其他发行版规则未必相同，请先检查你所用的发行版，不要盲用独立 CLI 的 `--profile desktop`。可以让 Agent 探查是否有合规的非市场安装路径，但不保证可行；切勿盲改 App 管理的目录或绕过其校验。
+手机上没有 WorkBuddy 桌面 App，解不出凭据，必须先在电脑上导一份：
 
-**验证**：重启对应界面后，模型选择器出现「WorkBuddy / WorkBuddy AI」分组（只装一版就只验对应一组），并从分组里选一个模型完成一次简短对话、能正常回复，才算安装成功。
+```powershell
+set ELECTRON_RUN_AS_NODE=1
+set "WORKBUDDY_ELECTRON_BIN=D:\Apps\WorkBuddy\WorkBuddy.exe"
+"%WORKBUDDY_ELECTRON_BIN%" export-own.js
+```
+
+把产出的 `workbuddy-auth.json` 传到手机的 `~/.dsh/.workbuddy-auth.json`（文件名有个点），
+然后在手机终端里执行同样的 `dsh plugin --profile web add github:...`。
+
+**完整教程**：[`deploy/README.md`](./deploy/README.md)（电脑端 [`DESKTOP.md`](./deploy/DESKTOP.md)、手机端 [`MOBILE.md`](./deploy/MOBILE.md)）
+
+### 验证装的到底是不是打过补丁的
+
+```sh
+grep -c "WB_PATCH"                ~/.dsh/profiles/*/node_modules/dsh-workbuddy-connect/lib/host-heartbeat-*.js
+grep -c "applyClientPatches"      ~/.dsh/profiles/*/node_modules/dsh-workbuddy-connect/lib/host-heartbeat-*.js
+grep -c "clampWorkbuddyMaxTokens" ~/.dsh/profiles/*/node_modules/dsh-workbuddy-connect/lib/host-heartbeat-*.js
+```
+
+三个数字都不为 0 = 补丁在。有任何一个是 0 = 装成了 npm 原版。
+
+### 推荐：把安装交给本机已有的 Agent
+
+任何具备终端与文件操作能力的助手（DSH Agent、Codex、Claude Code、Cursor 等）都可以，把下面这段话原样发给它：
+
+```text
+请帮我安装并验证 DSH 插件，来源是 https://github.com/Hourz26/dsh-workbuddy-connect-patched
+
+1. 先运行 dsh --version，确认内核版本落在 >=0.2.1-rc.2 <0.3.0 这个区间；
+2. 确认我实际使用的是 Desktop / Web / TUI 哪种形态，桌面版以 App 内置核心为准，
+   不要用独立 CLI 的版本号代替；
+3. 用 dsh plugin --profile <对应 profile> add github:Hourz26/dsh-workbuddy-connect-patched 安装；
+   如果桌面版的 profile 由 App 管理、拒绝独立 CLI，请如实报告并改为在 App 的插件界面里装；
+4. 任何本地文件或配置改动，先征得我同意并做好备份；
+5. 装完 grep 一下 lib/host-heartbeat-*.js 里有没有 WB_PATCH 和 applyClientPatches 标记，
+   确认补丁确实在；如果 lib 里没有这些标记，说明装成了 npm 原版，需要重来；
+6. 最后重启对应界面，验证模型选择器里出现 WorkBuddy 分组，并陪我完成一次简短对话；
+7. 如果报 请求被拦截，请重新发送 或 the model provider is temporarily unavailable，
+   说明补丁没生效，不要绕过，如实告诉我装的是哪个包。
+```
+
+### 版本要求
+
+本 fork 的 `peerDependencies` 已放宽为 `>=0.2.1-rc.2 <0.3.0`：
+
+| DSH 内核 | 结果 |
+|---|---|
+| `0.2.0.x` 及更早 | 被跳过，不加载 |
+| `0.2.1-rc.1` ~ `0.2.2.x` | 正常 |
+| `0.3.0` 及以后 | 被挡住（安全阀） |
+
+原版的精确 pin `0.2.1-rc.2` 会在内核小版本升级后**静默跳过**整个 bundle——
+只往 stderr 写一行 `skipping profile bundle`，不报错，表现就是模型分组凭空消失。
+
+### TUI 版本搭配
+
+终端壳 `@deepseek-harness-tui/dsh-tui` 需 0.10.0-beta.5 及以上，更早版本装本插件会启动失败（`events is not iterable`）；推理档位的手动检测仅 Web / Desktop 提供，TUI 没有。
+
+### Desktop
+
+部分 Desktop 发行版的 `desktop` profile 由 App 管理，独立 CLI 的 `--profile desktop` 会被拒绝。
+各发行版规则不同，请在 App 自己的插件界面里装，spec 填 `github:Hourz26/dsh-workbuddy-connect-patched`。
+不要绕过 App 的校验。
+
+### 验证
+
+重启对应界面后，模型选择器出现 **WorkBuddy** 分组，从分组里选一个模型，
+发一句话能正常回复，再发一个需要长输出的请求（比如「写个 500 字短文」）也能正常回来，
+才算装成功。第 2 条特别重要——很多 400 / 500 只在生成较长内容时才触发。
 
 ## 功能
 
@@ -145,7 +198,8 @@ dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-
 - **0.7.0**：适配 DSH 0.2.0 的设置服务改造，不再支持 0.1.x。
 - **0.6.5**：0.1.x 线最终版本。
 
-固定版本安装示例：`dsh plugin --profile web add dsh-workbuddy-connect@0.7.9`。
+本 fork 的安装命令：`dsh plugin --profile web add github:Hourz26/dsh-workbuddy-connect-patched`。
+（`dsh-workbuddy-connect@0.7.9` 是 npm 原版，不带补丁，不要用。）
 
 **pi-ai 版本按内核线区分，不能混**：0.2.1-rc.1 / rc.2 内核线（分别对应插件 0.7.7 / 0.7.8–0.7.9）已升级到 `@earendil-works/pi-ai` 1.3.0（由插件自带），profile 级历史遗留的 `overrides: {'@earendil-works/pi-ai': '0.87.1'}` **必须移除**，否则插件会因加载到旧一代 pi-ai 而启动失败；0.2.0-rc.2 内核线（插件 0.7.6）仍要求 `^0.87.1`，在这条线上**不要**把 profile 级的 pi-ai 升到 1.x，第三方插件管理器的「可更新」提示不校验 peer 约束、不能照做（[#86](https://github.com/corrinehu/dsh-workbuddy-connect/issues/86)）。
 

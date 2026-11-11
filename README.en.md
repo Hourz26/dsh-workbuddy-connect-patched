@@ -4,51 +4,105 @@ English | [中文](./README.md)
 
 Brings the models available in your signed-in WorkBuddy / WorkBuddy AI desktop app into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness); the two versions each show their own model group and reuse their own account sign-in and credit.
 
-## Install
+## Installation
 
-**Prerequisite**: the WorkBuddy (CN) or WorkBuddy AI desktop app is installed and signed in on this machine. The plugin reuses the app's sign-in state and follows account switches automatically; the two never affect each other.
+**Prerequisite**: WorkBuddy (China edition) or the WorkBuddy AI desktop app installed and signed in on the same machine. The plugin reuses the app's login state, so switching accounts just works.
 
-**Recommended: let an Agent you already have do the install** — any assistant with terminal and file access (the DSH agent, Codex, Claude Code, Cursor, …). Paste this to it verbatim:
+> ⚠️ **Do not install `dsh-workbuddy-connect@0.7.9`.** That is the npm original — last updated 2026-10-19, it lacks the three patches in this repo and will be rejected by Tencent's gateway (`400 / 11128` or `500 / 11134`). **Install from this repo.**
 
-```text
-Please install and verify the DSH (DeepSeek Harness) plugin dsh-workbuddy-connect for me (project: https://github.com/corrinehu/dsh-workbuddy-connect).
-Start by reading the project README and confirming which interface I actually use (Web / Desktop / TUI) and its DSH core version — for the Desktop app, the bundled core, never the standalone CLI's version.
-Then install from the official npm package per the version mapping (0.2.1-rc.2 -> 0.7.9, 0.2.1-rc.1 -> 0.7.7, 0.2.0-rc.2 -> 0.7.6, rc.1 -> 0.7.0, 0.1.5-0.1.7 -> 0.6.5), preferring a locally supported non-market channel; on some Desktop distributions (the official Electron app in particular) the profile is app-managed and rules vary by distribution — check mine first, then explore its compliant install route, but never bypass its validation.
-Ask for my consent and make backups before changing any local files or configuration.
-After installing, verify the WorkBuddy group appears in the model picker and walk me through one short conversation.
-If the Desktop install still fails generation validation (e.g. the @types/retry false positive), report it honestly, reference upstream dataelement/dsh-desktop#688, and suggest switching to the standalone Web / TUI — do not modify dependency packages or bypass the check.
-```
-
-Core-to-plugin quick reference (full table in "Compatibility and release history" at the end):
-
-| DSH core | Recommended plugin |
-|---|---|
-| 0.2.1-rc.2 | 0.7.9 (npm latest) |
-| 0.2.1-rc.1 | 0.7.7 |
-| 0.2.0-rc.2 | 0.7.6 |
-| 0.2.0-rc.1 | 0.7.0 |
-| 0.1.5 – 0.1.7 | 0.6.5 |
-
-<details>
-<summary>Manual install (command line, Web / TUI only)</summary>
+### Shortest path
 
 ```sh
-# Web (pin per your actual core — example: 0.2.1-rc.2 -> 0.7.9; or install from source via github:corrinehu/dsh-workbuddy-connect)
-dsh plugin --profile web add dsh-workbuddy-connect@0.7.9
-dsh web
+# 0. Confirm the core version is >=0.2.1-rc.2 and <0.3.0
+dsh --version
 
-# TUI (example for a 0.1.x core; that profile needs pnpm 11, e.g. npx pnpm@11)
-dsh plugin --profile dsh-tui add dsh-workbuddy-connect@0.6.5
-dsh --profile dsh-tui
+# 1. Install (--profile web for Web, --profile dsh-tui for TUI)
+dsh plugin --profile web add github:Hourz26/dsh-workbuddy-connect-patched
+
+# 2. Quit DSH completely and reopen (not a page refresh)
 ```
 
-</details>
+A **WorkBuddy** group should appear in the model picker.
 
-> **TUI version pairing**: the terminal shell `@deepseek-harness-tui/dsh-tui` must be 0.10.0-beta.5 or newer — older versions fail at startup with this plugin installed (`events is not iterable`); manual reasoning-level detection exists on Web / Desktop only, not TUI.
+### On a phone (DSH Go)
 
-> **Desktop**: on some Desktop distributions (the official Electron app in particular) the `desktop` profile is app-managed, and the official app rejects the standalone CLI's `--profile desktop`; other distributions may follow different rules, so check yours first and do not blindly use the standalone CLI's `--profile desktop`. An Agent may probe whether your distribution offers a compliant non-market install route, but that is not guaranteed to work; never blindly edit the app-managed directory or bypass its validation.
+Phones cannot run the WorkBuddy desktop app, so the encrypted credential can never be opened there. Export it on your computer first:
 
-**Verify**: after restarting the interface, the model picker shows the "WorkBuddy / WorkBuddy AI" group(s) (with only one app installed, check just that group), and a model picked from the group completes one short conversation with a normal reply — that is what a successful install means.
+```powershell
+set ELECTRON_RUN_AS_NODE=1
+set "WORKBUDDY_ELECTRON_BIN=D:\\Apps\\WorkBuddy\\WorkBuddy.exe"
+"%WORKBUDDY_ELECTRON_BIN%" export-own.js
+```
+
+Copy the resulting `workbuddy-auth.json` to `~/.dsh/.workbuddy-auth.json` on the phone (note the leading dot), then run the same `dsh plugin --profile web add github:...` there.
+
+**Full guide**: [`deploy/README.md`](./deploy/README.md) — desktop [`DESKTOP.md`](./deploy/DESKTOP.md), mobile [`MOBILE.md`](./deploy/MOBILE.md).
+
+### Verify you actually got the patched build
+
+```sh
+grep -c "WB_PATCH"                ~/.dsh/profiles/*/node_modules/dsh-workbuddy-connect/lib/host-heartbeat-*.js
+grep -c "applyClientPatches"      ~/.dsh/profiles/*/node_modules/dsh-workbuddy-connect/lib/host-heartbeat-*.js
+grep -c "clampWorkbuddyMaxTokens" ~/.dsh/profiles/*/node_modules/dsh-workbuddy-connect/lib/host-heartbeat-*.js
+```
+
+All three counts must be non-zero. Any zero means you installed the npm original.
+
+### Let an existing agent do it
+
+Hand the following to any assistant with terminal and file access (DSH Agent, Codex, Claude Code, Cursor, ...):
+
+```text
+Install and verify the DSH plugin from https://github.com/Hourz26/dsh-workbuddy-connect-patched
+
+1. Run dsh --version first and confirm the core version is within >=0.2.1-rc.2 <0.3.0.
+2. Determine whether I use Desktop / Web / TUI. For Desktop, use the version bundled in the app,
+   not the standalone CLI's.
+3. Install with: dsh plugin --profile <profile> add github:Hourz26/dsh-workbuddy-connect-patched
+   If the desktop profile is managed by the app and rejects the standalone CLI, report that
+   honestly and install through the app's own plugin UI instead.
+4. Ask for my consent and take a backup before changing any local file or config.
+5. After installing, grep lib/host-heartbeat-*.js for WB_PATCH and applyClientPatches to confirm
+   the patches are present. If they are missing, you installed the npm original — start over.
+6. Restart the UI, verify a WorkBuddy group appears in the model picker, and run a short conversation.
+7. If a request fails with "请求被拦截，请重新发送" (request blocked) or "the model provider is
+   temporarily unavailable", the patches did not take effect. Do not work around it — tell me
+   exactly which package was installed.
+```
+
+### Version requirements
+
+This fork widens `peerDependencies` to `>=0.2.1-rc.2 <0.3.0`:
+
+| DSH core | Result |
+|---|---|
+| `0.2.0.x` and older | skipped, not loaded |
+| `0.2.1-rc.1` ~ `0.2.2.x` | works |
+| `0.3.0` and later | blocked (safety valve) |
+
+The original exact pin `0.2.1-rc.2` makes `dsh-app-boot` **silently skip** the whole bundle
+after a minor core bump — it only writes `skipping profile bundle` to stderr, and the model
+group just disappears from the picker.
+
+### TUI pairing
+
+The terminal shell `@deepseek-harness-tui/dsh-tui` must be 0.10.0-beta.5 or later; earlier
+versions fail to boot with this plugin (`events is not iterable`). Manual reasoning-effort
+detection is Web / Desktop only — TUI does not have it.
+
+### Desktop
+
+On some Desktop distributions the `desktop` profile is managed by the app, and the standalone
+CLI's `--profile desktop` is rejected. Rules differ per distribution: install through the app's
+own plugin UI with the spec `github:Hourz26/dsh-workbuddy-connect-patched`. Do not bypass the
+app's validation.
+
+### Verification
+
+After restarting, the model picker should show a **WorkBuddy** group. Pick a model there, send
+a message and get a normal reply — then send something that needs a long answer (e.g. "write a
+500-word essay") and confirm that works too. The second test matters: most 400 / 500 failures
+only surface when generating longer content.
 
 ## Features
 
@@ -134,7 +188,8 @@ Release history (full records at [releases](https://github.com/corrinehu/dsh-wor
 - **0.7.0**: adapts to DSH 0.2.0's settings-service rework and drops 0.1.x support.
 - **0.6.5**: final release of the 0.1.x line.
 
-Pinned-version install example: `dsh plugin --profile web add dsh-workbuddy-connect@0.7.9`.
+Install command for this fork: `dsh plugin --profile web add github:Hourz26/dsh-workbuddy-connect-patched`.
+(`dsh-workbuddy-connect@0.7.9` is the npm original without the patches — do not use it.)
 
 **pi-ai versions are per core line and must not be mixed**: the 0.2.1-rc.1 / rc.2 core lines (plugin 0.7.7 / 0.7.8–0.7.9 respectively) moved to `@earendil-works/pi-ai` 1.3.0 (bundled by the plugin), so a profile-level leftover `overrides: {'@earendil-works/pi-ai': '0.87.1'}` **must be removed** or the plugin fails to load; the 0.2.0-rc.2 core line (plugin 0.7.6) still requires `^0.87.1` — on that line, **do not** upgrade the profile-level pi-ai to 1.x, and do not act on third-party plugin managers' "updatable" prompts, which do not check peer constraints ([#86](https://github.com/corrinehu/dsh-workbuddy-connect/issues/86)).
 

@@ -11,3 +11,9 @@ Thumbs.db
 .workbuddy-auth.json
 .env
 .env.*
+
+# 凭据导出物与中间产物 —— 绝不能进仓库
+workbuddy-auth*.json
+b64.txt
+*.b64
+stage/tools/workbuddy-auth.json
