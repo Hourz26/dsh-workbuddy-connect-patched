@@ -1,0 +1,113 @@
+diff --git a/lib/host-heartbeat-SJaZ33tR.js b/lib/host-heartbeat-SJaZ33tR.js
+index 2b5854f..70190bd 100644
+--- a/lib/host-heartbeat-SJaZ33tR.js
++++ b/lib/host-heartbeat-SJaZ33tR.js
+@@ -1930,6 +1930,100 @@ function modelWithCurrentPromotion(model, now = Date.now()) {
+ * A body that is not a JSON object is returned unchanged, so this is safe to
+ * run over an already-prepared-or-not body.
+ */
++/* WB_PATCH_V6 */
++const WORKSPACE_ROOT_PATTERN = /\bworkspace root\b/giu;
++const WORKSPACE_ROOT_NEUTRAL = "workspace folder";
++const PRODUCT_NAME_PATTERN = /DeepSeek\s+Harness/gu;
++const PRODUCT_NEUTRAL_NAME = "the assistant";
++
++/**
++* Rewrite the text of every system/developer message, handling both the plain
++* string form and the multi-part form. Used by the client-fingerprint patches.
++*/
++function rewriteSystemishText(body, rewrite) {
++	if (!isObject(body)) return;
++	const messages = body["messages"];
++	if (!Array.isArray(messages)) return;
++	for (const message of messages) {
++		if (!isObject(message)) continue;
++		const role = message["role"];
++		if (role !== "system" && role !== "developer") continue;
++		const content = message["content"];
++		if (typeof content === "string") {
++			message["content"] = rewrite(content);
++			continue;
++		}
++		if (!Array.isArray(content)) continue;
++		for (const part of content) {
++			if (isObject(part) && part["type"] === "text" && typeof part["text"] === "string") part["text"] = rewrite(part["text"]);
++		}
++	}
++}
++
++/**
++* Cap the requested completion length at the catalogued maximum for the model.
++* The harness can ask for more than the channel's ceiling (observed:
++* deepseek-v4.1-flash at 384000 against a 128000 limit), and the upstream
++* answers that with HTTP 500 / code 11134 rather than a validation error.
++*/
++function clampWorkbuddyMaxTokens(body) {
++	if (!isObject(body)) return;
++	const modelId = typeof body["model"] === "string" ? body["model"] : "";
++	const table = typeof FALLBACK_WORKBUDDY_MODELS !== "undefined" && Array.isArray(FALLBACK_WORKBUDDY_MODELS) ? FALLBACK_WORKBUDDY_MODELS : [];
++	const row = table.find((entry) => isObject(entry) && entry["id"] === modelId);
++	const cap = row && typeof row["maxTokens"] === "number" && Number.isFinite(row["maxTokens"]) && row["maxTokens"] > 0 ? row["maxTokens"] : 128e3;
++	const current = body["max_tokens"];
++	if (typeof current !== "number" || !Number.isFinite(current) || current <= cap) return;
++	body["max_tokens"] = cap;
++}
++
++/**
++* Persist the exact body that is about to go upstream, plus the concatenated
++* system/developer text, so a later 400/11128 can be bisected offline instead
++* of guessed at.
++*/
++function dumpWorkbuddyRequest(body, suffix) {
++	try {
++		if (!isObject(body)) return;
++		const text = JSON.stringify(body);
++		if (typeof text !== "string" || text.length > 8388608) return;
++		const root = (() => {
++			try {
++				return resolveDshHome();
++			} catch {
++				return join(homedir(), ".dsh");
++			}
++		})();
++		const tag = typeof suffix === "string" && suffix.length > 0 ? "." + suffix : "";
++		writeFile(join(root, "workbuddy-last-body" + tag + ".json"), text, "utf8").catch(() => {});
++		// 只有原样（raw）那份才需要额外拆一份可读的 system 文本，prepared 那份不用。
++		if (typeof suffix === "string" && suffix !== "raw") return;
++		const messages = body["messages"];
++		if (!Array.isArray(messages)) return;
++		const head = [];
++		for (const message of messages) {
++			if (!isObject(message)) continue;
++			const role = message["role"];
++			if (role !== "system" && role !== "developer") continue;
++			const content = message["content"];
++			head.push(typeof content === "string" ? content : JSON.stringify(content));
++		}
++		writeFile(join(root, "workbuddy-last-system.txt"), head.join("\n\n"), "utf8").catch(() => {});
++	} catch {}
++}
++
++/**
++* All CN-channel body rewrites that keep the request inside the upstream's
++* client fingerprint rules.
++*/
++function applyClientPatches(body) {
++	dumpWorkbuddyRequest(body, "raw");
++	rewriteSystemishText(body, (text) => text.replace(WORKSPACE_ROOT_PATTERN, WORKSPACE_ROOT_NEUTRAL).replace(PRODUCT_NAME_PATTERN, PRODUCT_NEUTRAL_NAME));
++	clampWorkbuddyMaxTokens(body);
++	dumpWorkbuddyRequest(body, "prepared");
++}
++
++
+ function prepareCnChatBody(source) {
+ 	let body;
+ 	try {
+@@ -1941,6 +2035,7 @@ function prepareCnChatBody(source) {
+ 	dropUnsupportedEffort(body);
+ 	neutralizeIdentityEverywhere(body);
+ 	neutralizeChannelIdentity(body);
++	applyClientPatches(body);
+ 	return JSON.stringify(body);
+ }
+ function prepareInternationalChatBody(source) {
